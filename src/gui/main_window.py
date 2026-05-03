@@ -17,7 +17,7 @@ from matplotlib.figure import Figure
 from src.data.transient_loader import TransientCatalog
 from src.gui.info_panel import TransientInfoPanel
 from src.maps.base import BackgroundMap
-from src.plots.histograms import build_histograms_figure
+from src.plots.histograms import HistogramPanel
 
 
 class TransientMapApp(tk.Tk):
@@ -53,8 +53,8 @@ class TransientMapApp(tk.Tk):
         # Left: histograms
         left = ttk.Frame(container)
         left.pack(side="left", fill="y")
-        hist_fig = build_histograms_figure(self._selected, self._snr_threshold)
-        hist_canvas = FigureCanvasTkAgg(hist_fig, master=left)
+        self._hist_panel = HistogramPanel(self._selected, self._snr_threshold)
+        hist_canvas = FigureCanvasTkAgg(self._hist_panel.figure, master=left)
         hist_canvas.get_tk_widget().configure(width=380)
         hist_canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
         hist_canvas.draw()
@@ -129,6 +129,8 @@ class TransientMapApp(tk.Tk):
         )
         idx = int(np.argmin(d2))
         self._highlight(idx)
+        self._hist_panel.set_marker(self._selected, idx)
+        self._hist_canvas.draw_idle()
         self._show_info(idx)
 
     def _highlight(self, idx: int) -> None:
@@ -156,5 +158,7 @@ class TransientMapApp(tk.Tk):
             self._highlight_artist.remove()
             self._highlight_artist = None
             self._map_canvas.draw_idle()
+        self._hist_panel.clear_marker()
+        self._hist_canvas.draw_idle()
         if self._info_panel is not None:
             self._info_panel.hide()

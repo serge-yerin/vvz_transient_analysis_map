@@ -160,7 +160,10 @@ A small test window with two buttons should appear.
    background.
 
 3. **Click a transient on the map.** The closest transient is highlighted in
-   red and a small "Transient parameters" window pops up with:
+   red, a thin red vertical line appears on each of the four histograms at
+   that transient's value (so you can see at a glance where it falls in the
+   overall distribution), and a small "Transient parameters" window pops up
+   with:
    * `TRS #` — index in the catalog (1-based, matches the IDL "TRS #")
    * `RA` — right ascension in `Hh Mm Ss` and decimal hours
    * `DEC` — declination in degrees
@@ -173,7 +176,8 @@ A small test window with two buttons should appear.
    update to the new selection.
 
 5. **Press `Esc`** in the main window or click **Close** in the parameters
-   window — the highlight is removed and the parameters window is hidden.
+   window — the map highlight, the histogram marker lines and the parameters
+   window are all cleared.
 
 6. **Zoom and pan** — the matplotlib toolbar at the bottom of the map lets you
    zoom in for crowded regions. Click the home icon to return to the full

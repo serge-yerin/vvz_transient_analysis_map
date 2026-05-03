@@ -15,26 +15,61 @@ from matplotlib.figure import Figure
 from src.data.transient_loader import TransientCatalog
 
 
-def build_histograms_figure(
-    selected: TransientCatalog,
-    snr_threshold: float = 8.0,
-    figure: Figure | None = None,
-) -> Figure:
-    """Render the four distribution histograms onto a Figure with 4 stacked subplots.
+class HistogramPanel:
+    """Holds the four distribution histograms and a movable red marker line.
 
-    `selected` should be the SNR/Dec-filtered catalog (i.e. what the IDL code
-    plots after applying `inds = where(SNR_corr gt Threshold and dec lt 75)`).
+    The marker is updated by `set_marker(catalog, index)` and removed by
+    `clear_marker()`. The figure is built once; updates only touch the marker
+    artists, so they are cheap.
     """
-    fig = figure or Figure(figsize=(3.6, 8.4), layout="constrained")
-    fig.clear()
-    axes = fig.subplots(4, 1)
 
-    _gb_hist(axes[0], selected.gb)
-    _snr_hist(axes[1], selected.snr_corr, snr_threshold)
-    _flux_hist(axes[2], selected.tx1000_k)
-    _dm_hist(axes[3], selected.dm_corr)
+    PARAM_KEYS = ("b", "snr", "flux", "dm")
 
-    return fig
+    def __init__(
+        self,
+        selected: TransientCatalog,
+        snr_threshold: float = 8.0,
+        figure: Figure | None = None,
+    ) -> None:
+        self.figure = figure or Figure(figsize=(3.6, 8.4), layout="constrained")
+        self.figure.clear()
+        ax_list = self.figure.subplots(4, 1)
+        self.axes: dict[str, "Axes"] = {  # type: ignore[name-defined]
+            "b": ax_list[0],
+            "snr": ax_list[1],
+            "flux": ax_list[2],
+            "dm": ax_list[3],
+        }
+        _gb_hist(self.axes["b"], selected.gb)
+        _snr_hist(self.axes["snr"], selected.snr_corr, snr_threshold)
+        _flux_hist(self.axes["flux"], selected.tx1000_k)
+        _dm_hist(self.axes["dm"], selected.dm_corr)
+        self._marker_lines: dict[str, "Line2D"] = {}  # type: ignore[name-defined]
+
+    def set_marker(self, catalog: TransientCatalog, index: int) -> None:
+        """Draw a thin red vertical line at this transient's value on each plot."""
+        values = {
+            "b": float(catalog.gb[index]) if catalog.gb is not None else None,
+            "snr": float(catalog.snr_corr[index]),
+            "flux": float(catalog.tx1000_k[index]),
+            "dm": float(catalog.dm_corr[index]),
+        }
+        for key, val in values.items():
+            if val is None:
+                continue
+            line = self._marker_lines.get(key)
+            if line is None:
+                line = self.axes[key].axvline(
+                    val, color="red", linewidth=1.0, zorder=5
+                )
+                self._marker_lines[key] = line
+            else:
+                line.set_xdata([val, val])
+
+    def clear_marker(self) -> None:
+        for line in self._marker_lines.values():
+            line.remove()
+        self._marker_lines.clear()
 
 
 def _gb_hist(ax, gb: np.ndarray) -> None:
