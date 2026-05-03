@@ -3,8 +3,15 @@
 Bin sizes and ranges were chosen to reproduce the IDL plots:
   * Galactic latitude b: bin width 10 deg, range -90..90
   * SNR (corrected):     bin width 1,      range Threshold..30 (log Y)
-  * Flux (Tx1000_K):     bin width 5,      range 21..120        (log Y)
+  * Flux (S_o, Jy):      bin width 5,      range 10..150        (log Y)
   * DM (corrected):      bin width 1,      range 0..30
+
+Note: the IDL `transientanalisys_380_flux_v2.pro` histogram labeled
+"Flux, Jy" is actually plotted from the `Tx1000_K` column (brightness
+temperature), while the popup window for the selected transient uses the
+`S_o` column (true flux density in Jansky). The two columns are different
+physical quantities. We use `S_o` here so the red marker line matches the
+"FLUX = ... Jy" value shown in the info panel.
 """
 
 from __future__ import annotations
@@ -42,7 +49,7 @@ class HistogramPanel:
         }
         _gb_hist(self.axes["b"], selected.gb)
         _snr_hist(self.axes["snr"], selected.snr_corr, snr_threshold)
-        _flux_hist(self.axes["flux"], selected.tx1000_k)
+        _flux_hist(self.axes["flux"], selected.flux)
         _dm_hist(self.axes["dm"], selected.dm_corr)
         self._marker_lines: dict[str, "Line2D"] = {}  # type: ignore[name-defined]
 
@@ -51,7 +58,7 @@ class HistogramPanel:
         values = {
             "b": float(catalog.gb[index]) if catalog.gb is not None else None,
             "snr": float(catalog.snr_corr[index]),
-            "flux": float(catalog.tx1000_k[index]),
+            "flux": float(catalog.flux[index]),
             "dm": float(catalog.dm_corr[index]),
         }
         for key, val in values.items():
@@ -93,15 +100,15 @@ def _snr_hist(ax, snr_corr: np.ndarray, threshold: float) -> None:
     ax.set_title("SNR (corrected)", fontsize=10)
 
 
-def _flux_hist(ax, tx1000_k: np.ndarray) -> None:
-    bins = np.arange(21, 121, 5)
-    ax.hist(tx1000_k, bins=bins, histtype="step", color="black")
+def _flux_hist(ax, flux_jy: np.ndarray) -> None:
+    bins = np.arange(10, 151, 5)
+    ax.hist(flux_jy, bins=bins, histtype="step", color="black")
     ax.set_yscale("log")
-    ax.set_xlim(21, 120)
+    ax.set_xlim(10, 150)
     ax.set_ylim(0.5, 300)
     ax.set_xlabel("Flux, Jy")
     ax.set_ylabel("N")
-    ax.set_title("Flux", fontsize=10)
+    ax.set_title("Flux (S_o)", fontsize=10)
 
 
 def _dm_hist(ax, dm_corr: np.ndarray) -> None:
