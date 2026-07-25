@@ -1,0 +1,14 @@
+# Conda environment for the MMODA service container.
+#
+# NOTE: like requirements.txt, MMODA expects this at the REPOSITORY ROOT.
+# Move it there at submission time (see mmoda/README.md section 6).
+name: utr2-transients
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  # libmagic is required by the MMODA test tooling (nb2workflow / dispatcher).
+  - libmagic
+  - pip:
+      - -r requirements.txt

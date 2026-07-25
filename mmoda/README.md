@@ -7,8 +7,9 @@ This folder is the workspace for that effort. The desktop tkinter application in
 the repository root is **not** affected by anything here — it keeps working
 exactly as before.
 
-**Status:** research done, nothing implemented yet.
-**Started:** 2026-07-25.
+**Status:** first working service notebook, verified end to end with papermill.
+Not yet submitted — deployment is still blocked on the hosting question in §6.
+**Started:** 2026-07-25. **Target node:** BITP / Kyiv.
 
 ---
 
@@ -109,7 +110,18 @@ exactly the right seam — the notebook just needs a `BackgroundMap` instance an
 a `Figure`.
 
 Note: `main.py` calls `matplotlib.use("TkAgg")`. The notebook must **not** do
-that — it needs the `Agg` backend (headless).
+that — it needs the `Agg` backend (headless). `tests/test_notebook.py` enforces
+this.
+
+### Modules added for the service
+
+All head-less, all covered by tests, all usable by the desktop application too:
+
+| Module | Purpose |
+|---|---|
+| `src/query.py` | Cone search, SNR/DM filtering, RA hours↔degrees conversion, `NoTransientsFound` |
+| `src/products.py` | `QueryResult` → annotated astropy `Table` with units and descriptions |
+| `src/plots/skymap.py` | Head-less sky map rendering, including an exact cone outline |
 
 ---
 
@@ -141,9 +153,10 @@ These are real issues, ordered by how much they matter:
    we cannot support that without the observation start dates. This is the
    biggest scientific gap and is worth fixing at the catalog level regardless of
    MMODA. **Needs input from the survey team.**
-2. **RA units mismatch.** The CSV stores RA in **hours** (0–24);
-   `PointOfInterestRA` is in **degrees**. Trivial to convert, but a silent
-   wrong-answer bug if missed. Must be covered by a test.
+2. ~~**RA units mismatch.**~~ *Handled 2026-07-26.* The CSV stores RA in
+   **hours** (0–24); `PointOfInterestRA` is in **degrees**. All of `src/query.py`
+   and `src/products.py` work in degrees, the published table carries both `RA`
+   (deg) and `RA_hours`, and `tests/test_products.py` asserts the conversion.
 3. **No positional uncertainties.** Cone-search semantics are ill-defined
    without a per-transient error radius. Currently we can only do
    "nearest / within radius of the nominal position".
@@ -163,8 +176,25 @@ These are real issues, ordered by how much they matter:
    temperature), not `S_o`. The Python code deliberately uses `S_o`. Any
    published table must document what each column really is.
 
-Non-problem: the catalog is ~25 KB / 381 rows, small enough to ship inside the
+8. **Support files must move to the repository root at submission time.** MMODA
+   reads `requirements.txt`, `environment.yml`, `mmoda_help_page.md`,
+   `acknowledgements.md` and `mmoda.yaml` from the **repository root**. They
+   currently live in `mmoda/` so the desktop application's own
+   `requirements.txt` stays untouched. See §6 for the exact layout.
+
+9. **`u.hourangle` is not FITS-representable.** Discovered by the round-trip
+   test: attaching that unit to `RA_hours` makes `Table.write(..., format="fits")`
+   raise `UnitScaleError`, which would have broken the download product. The
+   column is therefore published without a unit, with the units stated in its
+   description instead.
+
+Non-problem: the catalog is ~25 KB / 380 rows, small enough to ship inside the
 repo. MMODA's guidance only warns against embedding *large* datasets.
+
+Non-problem: the default filters (`SNR_corr > 8`, `Dec < 75`) exclude nothing —
+all 380 rows pass, because the published catalog is already pre-filtered. A
+default run therefore returns the whole catalog, which is a sensible landing
+state for the service.
 
 ---
 
@@ -230,7 +260,76 @@ Other files MMODA looks for (at repo root):
 
 ---
 
-## 7. Plan
+## 7. What is here, and how to run it
+
+```
+mmoda/
+├── README.md                 this document
+├── utr2_transients.ipynb     the service notebook
+├── requirements.txt          service dependencies      -> root at submission
+├── environment.yml           conda environment         -> root at submission
+├── mmoda.yaml                notebook discovery config -> root at submission
+├── mmoda_help_page.md        help text for the service -> root at submission
+└── acknowledgements.md       credits                   -> root at submission
+```
+
+### One-time setup
+
+```bash
+pip install -e .            # makes `src` importable from anywhere
+pip install pytest papermill ipykernel nbformat
+```
+
+The editable install is what lets the notebook run irrespective of the working
+directory. Papermill executes with the *caller's* working directory, not the
+notebook's, so relying on relative paths does not work — the notebook falls back
+to searching upwards for `src/query.py`, and honours `UTR2_REPO_ROOT` as a last
+resort, but installing the package is the clean path.
+
+### Run the tests
+
+```bash
+pytest                      # 43 tests, ~20 s (includes 3 real notebook runs)
+pytest -m "not slow"        # skip the papermill executions
+```
+
+### Run the notebook by hand
+
+```bash
+# whole sky
+papermill mmoda/utr2_transients.ipynb /tmp/out.ipynb -k python3
+
+# cone search around Cas A
+papermill mmoda/utr2_transients.ipynb /tmp/out.ipynb -k python3 \
+    -p src_name "Cas A" -p RA 350.85 -p DEC 58.815 -p radius 20.0
+```
+
+It writes `utr2_sky_map.png` and `utr2_histograms.png` into the working
+directory. Both filenames are git-ignored.
+
+### The parameters it exposes
+
+| Parameter | Default | Ontology type |
+|---|---|---|
+| `src_name` | `"Cas A"` | `AstrophysicalObject` |
+| `RA` | `350.85` | `PointOfInterestRA` |
+| `DEC` | `58.815` | `PointOfInterestDEC` |
+| `radius` | `180.0` | `AngleDegrees` (180 = whole sky) |
+| `snr_threshold` | `8.0` | `Float` |
+| `dm_min` / `dm_max` | `0.0` / `100.0` | `Float` |
+
+### The products it returns
+
+| Output | Ontology type |
+|---|---|
+| `transient_table` | `ODAAstropyTable` |
+| `sky_map` | `ODAPictureProduct` |
+| `histograms` | `ODAPictureProduct` |
+| `query_summary` | `WorkflowResultComment` |
+
+---
+
+## 8. Plan
 
 ### Track A — Catalog (independent, do regardless)
 
@@ -243,17 +342,22 @@ Other files MMODA looks for (at repo root):
 
 ### Track B — MMODA service
 
-- [ ] **Email `contact@odahub.io`** — resolve the hosting blocker (§6) ← *do this first*
-- [ ] Contact the BITP/Kyiv MMODA node directly (§6) — likeliest ally for a UTR-2 catalog
-- [ ] Draft `utr2_transients.ipynb`: parameters cell, orchestration, outputs cell
-- [ ] Cone-search + SNR/DM filtering helper (new, headless; likely `src/query.py`)
-- [ ] RA hours ↔ degrees conversion, with a test
-- [ ] Headless figure rendering: histograms → PNG, sky map → PNG
-- [ ] Build the `ODAAstropyTable` output with proper units and column metadata
-- [ ] `requirements.txt` / `environment.yml` for the service container
-- [ ] `test_utr2_transients.ipynb` using `nb2workflow.nbadapter.run`
-- [ ] `mmoda_help_page.md` and `acknowledgements.md`
-- [ ] `mmoda.yaml` at repo root
+- [ ] **Contact the BITP/Kyiv node** (§6) — target node, likeliest ally ← *do this first*
+- [ ] Email `contact@odahub.io` — resolve the hosting blocker (§6)
+- [x] Draft `utr2_transients.ipynb`: parameters cell, orchestration, outputs cell
+- [x] Cone-search + SNR/DM filtering helper — `src/query.py`
+- [x] RA hours ↔ degrees conversion, with a test
+- [x] Headless figure rendering: histograms → PNG, sky map → PNG
+- [x] Build the `ODAAstropyTable` output with proper units and column metadata
+- [x] `requirements.txt` / `environment.yml` for the service container
+- [x] `mmoda_help_page.md` and `acknowledgements.md`
+- [x] `mmoda.yaml` (template in `mmoda/`, to be moved to root)
+- [x] Verify end to end with papermill, including parameter injection
+- [ ] Fill in the real `oda:reference` DOI (currently a placeholder in the notebook)
+- [ ] `test_utr2_transients.ipynb` using `nb2workflow.nbadapter.run` — MMODA wants a
+      notebook-form test for its automated monitoring, alongside our pytest suite
+- [ ] Install `nb2workflow` and validate the annotations it actually parses
+- [ ] Move the support files to the repository root (§5.8)
 - [ ] Local run via `nb2service`, then `nb2worker` container build
 - [ ] Deploy, verify in the MMODA frontend, supply test parameters to the team
 
@@ -265,10 +369,30 @@ Other files MMODA looks for (at repo root):
 
 ---
 
-## 8. Work log
+## 9. Work log
 
 Newest first. One entry per session — what was done, what was decided, what is
 next.
+
+### 2026-07-26 — First working service notebook
+
+- **Decided:** target the **BITP/Kyiv** node.
+- Built the head-less analysis layer: `src/query.py`, `src/products.py`,
+  `src/plots/skymap.py`. No existing file was modified, so the desktop
+  application is untouched (re-checked: still 380 → 380).
+- Wrote `mmoda/utr2_transients.ipynb` with `parameters` and `outputs` cells,
+  plus the support files listed in §7.
+- Added `pyproject.toml` and 43 tests. **Two real bugs were caught by tests:**
+  - `u.hourangle` cannot be written to FITS — would have broken the download
+    product (§5.9);
+  - papermill executes with the *caller's* working directory, so the notebook's
+    original path discovery failed from an unrelated directory. Fixed by making
+    the project pip-installable, with a search-upwards fallback.
+- Verified end to end with papermill from an unrelated directory: whole-sky run
+  returns 380/380; a 20° cone around Cas A returns 10/380; an impossible query
+  fails with the intended explanatory message.
+- **Next:** contact the Kyiv node. Then the real DOI, the `test_*.ipynb`, and
+  validation against `nb2workflow` itself.
 
 ### 2026-07-25 — Feasibility study
 
@@ -289,7 +413,7 @@ next.
 
 ---
 
-## 9. References
+## 10. References
 
 | What | Link |
 |---|---|

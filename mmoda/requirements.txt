@@ -1,0 +1,20 @@
+# Python dependencies for the MMODA service container.
+#
+# NOTE: MMODA reads `requirements.txt` from the REPOSITORY ROOT, not from a
+# subfolder. At submission time this file must be merged into the root
+# requirements.txt (see mmoda/README.md section 6). It is kept here for now so
+# the desktop application's own requirements.txt stays untouched.
+
+# Installs this repository so that `import src.query` works inside the
+# container regardless of the working directory papermill is launched from.
+-e .
+
+numpy>=1.26
+pandas>=2.1
+matplotlib>=3.8
+pillow>=10.0
+astropy>=6.0
+
+# MMODA client library. Not needed by the current notebook, but required as
+# soon as we report progress (oda_api.api.ProgressReporter) or read tokens.
+oda-api>=1.2.0

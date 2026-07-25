@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data products written by the MMODA notebook when it is run locally
+utr2_sky_map.png
+utr2_histograms.png
+mmoda/utr2_*.png

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "utr2-transient-map"
+version = "0.1.0"
+description = "Viewer and analysis for the UTR-2 (UTPSNS) radio transient catalogue"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "matplotlib>=3.8",
+    "pillow>=10.0",
+    "astropy>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+# The importable package is literally named `src`, which is also the directory
+# name. Listing the packages explicitly stops setuptools from mistaking this for
+# the conventional "src layout", where `src/` is only a container.
+[tool.setuptools]
+packages = [
+    "src",
+    "src.coordinates",
+    "src.data",
+    "src.gui",
+    "src.maps",
+    "src.plots",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: executes the MMODA notebook end to end (needs papermill and a kernel)",
+]
