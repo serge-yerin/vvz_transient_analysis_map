@@ -188,6 +188,36 @@ These are real issues, ordered by how much they matter:
    column is therefore published without a unit, with the units stated in its
    description instead.
 
+10. **Wrapped annotation comments are silently reassigned.** `nb2workflow`
+    attaches to a parameter only the comment found on the statement's **last
+    line** (`NotebookAdapter.parse_source_multiline`). Every other comment falls
+    through to a "standalone" list and becomes a *notebook-level* annotation.
+    A parameter written as
+
+    ```python
+    radius = 180.0  # oda:AngleDegrees ; oda:lower_limit 0. ;
+                    # oda:upper_limit 180. ; oda:label "Search radius"
+    ```
+
+    therefore loses its upper limit, its label and its description, while the
+    notebook itself acquires a nonsensical `oda:label "Search radius"`. Nothing
+    raises. **Keep every annotation on one line**, however long. Enforced by
+    `tests/test_notebook.py::TestAnnotationsAreSelfContained` and cross-checked
+    against nb2workflow itself in `TestNb2WorkflowIntrospection`.
+
+11. **`oda:reference` cannot hold a URL.** `nb2workflow/semantics.py` line 41
+    pre-processes comments with
+
+    ```python
+    comment = re.sub(rf"\b(http.*?)(?:\s|$)", r"<\1>", comment)
+    ```
+
+    which swallows the closing quote and yields `oda:reference "<https://…">` —
+    unparseable Turtle, discarded without warning. This breaks the *exact
+    example given in the official ODA development guide*. Write the reference as
+    a **bare DOI**: `oda:reference "10.1051/0004-6361/202037850"`. Worth
+    reporting upstream to oda-hub.
+
 Non-problem: the catalog is ~25 KB / 380 rows, small enough to ship inside the
 repo. MMODA's guidance only warns against embedding *large* datasets.
 
@@ -289,9 +319,35 @@ resort, but installing the package is the clean path.
 ### Run the tests
 
 ```bash
-pytest                      # 43 tests, ~20 s (includes 3 real notebook runs)
+pytest                      # 52 tests, ~22 s (includes 3 real notebook runs)
 pytest -m "not slow"        # skip the papermill executions
 ```
+
+The suite includes `TestNb2WorkflowIntrospection`, which parses the notebook
+with **nb2workflow itself** — the same tool MMODA runs — and asserts that all 7
+parameters keep their labels, that `radius` keeps both limits, that the 4
+outputs keep their ontology types, and that nothing leaked to the notebook
+level. Install it with `pip install nb2workflow oda-api`; the class is skipped
+if it is absent.
+
+### Deployment readiness
+
+| Check | State |
+|---|---|
+| Notebook runs head-lessly, from any working directory | ✅ verified with papermill |
+| Parameter injection works | ✅ verified (cone search returns 10/380) |
+| nb2workflow discovers all 7 parameters with labels/limits/groups | ✅ verified |
+| nb2workflow discovers all 4 outputs with correct types | ✅ verified |
+| `oda:version` and `oda:reference` reach the notebook graph | ✅ verified |
+| Failure path gives a readable message | ✅ verified |
+| Support files at repository root | ❌ **still in `mmoda/`** — §5.8 |
+| Real publication DOI in `oda:reference` | ❌ placeholder points at the repo |
+| `test_*.ipynb` for MMODA's automated monitoring | ❌ not written |
+| Container build (`nb2worker`) tried | ❌ not attempted (needs Docker) |
+| Hosting namespace confirmed | ❌ **blocked** — §6 |
+
+The first six are what makes the notebook a *valid* MMODA service, and they
+pass. The remaining five are packaging and process, not code.
 
 ### Run the notebook by hand
 
@@ -353,11 +409,12 @@ directory. Both filenames are git-ignored.
 - [x] `mmoda_help_page.md` and `acknowledgements.md`
 - [x] `mmoda.yaml` (template in `mmoda/`, to be moved to root)
 - [x] Verify end to end with papermill, including parameter injection
-- [ ] Fill in the real `oda:reference` DOI (currently a placeholder in the notebook)
+- [x] Install `nb2workflow` and validate the annotations it actually parses
+- [ ] Fill in the real `oda:reference` DOI — **bare DOI, not a URL** (§5.11)
 - [ ] `test_utr2_transients.ipynb` using `nb2workflow.nbadapter.run` — MMODA wants a
       notebook-form test for its automated monitoring, alongside our pytest suite
-- [ ] Install `nb2workflow` and validate the annotations it actually parses
 - [ ] Move the support files to the repository root (§5.8)
+- [ ] Report the `oda:reference` URL bug (§5.11) upstream to oda-hub
 - [ ] Local run via `nb2service`, then `nb2worker` container build
 - [ ] Deploy, verify in the MMODA frontend, supply test parameters to the team
 
@@ -373,6 +430,28 @@ directory. Both filenames are git-ignored.
 
 Newest first. One entry per session — what was done, what was decided, what is
 next.
+
+### 2026-07-26 (later) — Validated against nb2workflow, two silent bugs fixed
+
+Ran the notebook through `nb2workflow`'s own `NotebookAdapter` — the tool MMODA
+uses — rather than trusting the documentation. It found two defects that no
+amount of running the notebook would have revealed:
+
+- **Wrapped annotation comments were being silently reassigned** to the notebook
+  instead of the parameter (§5.10). Four of the seven parameters had lost their
+  labels, descriptions and groups, and `radius` had lost its 180° upper limit.
+  The MMODA form would have shown bare variable names and accepted a 5000°
+  radius. Fixed by putting every annotation on one line.
+- **`oda:reference` was being dropped entirely** because it held a URL (§5.11).
+  This is an nb2workflow bug — the documented example fails the same way. Fixed
+  by using a bare reference; worth reporting upstream.
+
+Added `TestAnnotationsAreSelfContained` and `TestNb2WorkflowIntrospection` so
+neither can regress. Suite is now 52 tests. Added a deployment readiness table
+to §7: the notebook is a valid MMODA service; what remains is packaging
+(support files at root, real DOI, test notebook) and the hosting blocker.
+
+**Next:** contact the Kyiv node.
 
 ### 2026-07-26 — First working service notebook
 

@@ -101,6 +101,107 @@ class TestNotebookStructure:
         assert "src.gui" not in code
 
 
+class TestAnnotationsAreSelfContained:
+    """Guard the two silent failure modes found on 2026-07-26.
+
+    Both produce a notebook that still runs perfectly and still looks right in
+    the source, but that MMODA renders with missing labels, missing limits and
+    missing provenance. Neither raises anything, so only a test catches them.
+    """
+
+    def test_no_wrapped_annotation_comments(self, notebook):
+        """Each annotation must sit on the same line as its assignment.
+
+        nb2workflow only attaches the comment on a statement's last line; a
+        continuation comment silently becomes a notebook-level annotation.
+        """
+        source = cell_with_tag(notebook, "parameters").source
+        for lineno, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped.startswith("#"):
+                continue
+            # Only the notebook-level annotations may stand on their own line.
+            assert stripped.startswith(("# oda:version", "# oda:reference")), (
+                f"line {lineno} of the parameters cell is a standalone comment: "
+                f"{stripped!r}. Annotations must be on the same line as their "
+                "assignment, or nb2workflow will attach them to the notebook "
+                "instead of the parameter."
+            )
+
+    def test_reference_is_not_a_url(self, notebook):
+        """`oda:reference` must be a bare DOI.
+
+        nb2workflow wraps anything beginning with `http` in angle brackets and
+        eats the closing quote, so a URL-valued reference is dropped entirely.
+        """
+        source = cell_with_tag(notebook, "parameters").source
+        reference = next(
+            ln for ln in source.splitlines() if ln.strip().startswith("# oda:reference")
+        )
+        assert "http" not in reference, (
+            f"{reference!r} starts with a URL scheme; nb2workflow cannot parse "
+            "it. Use a bare DOI such as \"10.1051/0004-6361/202037850\"."
+        )
+
+
+class TestNb2WorkflowIntrospection:
+    """Parse the notebook with nb2workflow itself - the tool MMODA runs."""
+
+    @pytest.fixture(scope="class")
+    def adapter(self):
+        pytest.importorskip("nb2workflow")
+        from nb2workflow.nbadapter import NotebookAdapter
+
+        return NotebookAdapter(str(NOTEBOOK))
+
+    def test_all_parameters_are_discovered(self, adapter):
+        assert set(adapter.extract_parameters()) == EXPECTED_PARAMETERS
+
+    def test_every_parameter_keeps_its_label(self, adapter):
+        """A lost label means the web form shows a raw variable name."""
+        for name, detail in adapter.extract_parameters().items():
+            assert "oda:label" in (detail.get("extra_ttl") or ""), (
+                f"{name} reached nb2workflow without its label"
+            )
+
+    def test_radius_keeps_both_limits(self, adapter):
+        """The upper limit is what stops a user asking for a 5000 degree cone."""
+        ttl = adapter.extract_parameters()["radius"]["extra_ttl"]
+        assert "oda:lower_limit" in ttl
+        assert "oda:upper_limit" in ttl
+
+    def test_selection_parameters_keep_their_group(self, adapter):
+        parameters = adapter.extract_parameters()
+        for name in ("snr_threshold", "dm_min", "dm_max"):
+            assert "oda:group" in parameters[name]["extra_ttl"]
+
+    def test_outputs_carry_the_expected_owl_types(self, adapter):
+        declared = adapter.extract_output_declarations()
+        assert set(declared) == set(EXPECTED_OUTPUTS)
+        for name, owl_type in EXPECTED_OUTPUTS.items():
+            assert declared[name]["owl_type"].endswith(owl_type)
+
+    def test_notebook_level_annotations_survive(self, adapter):
+        ttl = adapter.extra_ttl
+        assert "oda:version" in ttl
+        assert "oda:reference" in ttl, (
+            "oda:reference was dropped - it is almost certainly written as a URL"
+        )
+
+    def test_nothing_leaked_to_the_notebook_level(self, adapter):
+        """Only version and reference belong on the notebook itself.
+
+        A stray oda:label or oda:description here means some parameter's
+        annotation was wrapped onto a continuation line and got reassigned.
+        """
+        ttl = adapter.extra_ttl
+        for leaked in ("oda:label", "oda:description", "oda:group", "oda:upper_limit"):
+            assert leaked not in ttl, (
+                f"{leaked} leaked to the notebook level; a parameter annotation "
+                "is wrapped onto a second line"
+            )
+
+
 @pytest.mark.slow
 class TestNotebookExecution:
     """Run the notebook the way MMODA does, from an unrelated directory."""
