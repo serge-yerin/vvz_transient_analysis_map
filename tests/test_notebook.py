@@ -8,6 +8,7 @@ slower and is skipped when papermill is not installed.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -187,6 +188,29 @@ class TestNb2WorkflowIntrospection:
         assert "oda:reference" in ttl, (
             "oda:reference was dropped - it is almost certainly written as a URL"
         )
+
+    def test_no_unknown_ontology_terms(self, caplog):
+        """Every annotated type must resolve in the real ODA ontology.
+
+        nb2workflow accepts an invented class such as `oda:MadeUpType` and only
+        logs "is not in ontology", so a typo in an annotation would otherwise
+        sail through to a deployed service with a meaningless type.
+        """
+        pytest.importorskip("nb2workflow")
+        from nb2workflow.nbadapter import NotebookAdapter
+
+        with caplog.at_level(logging.WARNING):
+            adapter = NotebookAdapter(str(NOTEBOOK))
+            adapter.extract_parameters()
+            adapter.extract_output_declarations()
+
+        unknown = [
+            record.getMessage()
+            for record in caplog.records
+            if "not in ontology" in record.getMessage()
+            or "Unknown datatype" in record.getMessage()
+        ]
+        assert unknown == [], f"unrecognised ontology terms: {unknown}"
 
     def test_nothing_leaked_to_the_notebook_level(self, adapter):
         """Only version and reference belong on the notebook itself.

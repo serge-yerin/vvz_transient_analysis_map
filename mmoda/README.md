@@ -319,7 +319,7 @@ resort, but installing the package is the clean path.
 ### Run the tests
 
 ```bash
-pytest                      # 52 tests, ~22 s (includes 3 real notebook runs)
+pytest                      # 53 tests, ~23 s (includes 3 real notebook runs)
 pytest -m "not slow"        # skip the papermill executions
 ```
 
@@ -330,6 +330,14 @@ outputs keep their ontology types, and that nothing leaked to the notebook
 level. Install it with `pip install nb2workflow oda-api`; the class is skipped
 if it is absent.
 
+One of those tests deserves special mention. **nb2workflow does not reject an
+invented ontology class** — annotate a parameter `oda:TotallyMadeUpType` and it
+is accepted, with only a `is not in ontology` line in the log. A typo in an
+annotation would therefore reach a deployed service as a meaningless type.
+`test_no_unknown_ontology_terms` fails the build on any such warning. Our seven
+parameter types and four output types currently produce **none**, which
+confirms they all resolve in the real ODA ontology.
+
 ### Deployment readiness
 
 | Check | State |
@@ -338,6 +346,7 @@ if it is absent.
 | Parameter injection works | ✅ verified (cone search returns 10/380) |
 | nb2workflow discovers all 7 parameters with labels/limits/groups | ✅ verified |
 | nb2workflow discovers all 4 outputs with correct types | ✅ verified |
+| All annotated types resolve in the real ODA ontology | ✅ verified (no warnings) |
 | `oda:version` and `oda:reference` reach the notebook graph | ✅ verified |
 | Failure path gives a readable message | ✅ verified |
 | Support files at repository root | ❌ **still in `mmoda/`** — §5.8 |
@@ -446,9 +455,14 @@ amount of running the notebook would have revealed:
   This is an nb2workflow bug — the documented example fails the same way. Fixed
   by using a bare reference; worth reporting upstream.
 
+Also established that **nb2workflow accepts invented ontology classes** with
+only a log line, so `test_no_unknown_ontology_terms` now fails the build on any
+`is not in ontology` warning. Our types produce none, which confirms they all
+resolve against the real ODA ontology.
+
 Added `TestAnnotationsAreSelfContained` and `TestNb2WorkflowIntrospection` so
-neither can regress. Suite is now 52 tests. Added a deployment readiness table
-to §7: the notebook is a valid MMODA service; what remains is packaging
+none of this can regress. Suite is now 53 tests. Added a deployment readiness
+table to §7: the notebook is a valid MMODA service; what remains is packaging
 (support files at root, real DOI, test notebook) and the hosting blocker.
 
 **Next:** contact the Kyiv node.
