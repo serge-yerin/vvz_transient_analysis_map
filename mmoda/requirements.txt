@@ -15,6 +15,11 @@ matplotlib>=3.8
 pillow>=10.0
 astropy>=6.0
 
-# MMODA client library. Not needed by the current notebook, but required as
-# soon as we report progress (oda_api.api.ProgressReporter) or read tokens.
-oda-api>=1.2.0
+# Deliberately NOT listed: oda-api.
+#
+# The notebook does not import it - it is only needed for ProgressReporter,
+# token access or renku secrets, none of which this workflow uses. Adding it
+# pulls in 36 extra packages (17 -> 53), including scipy, bokeh, astroquery,
+# pyvo, rdflib, keyring and tornado. Because MMODA reads requirements.txt from
+# the repository root, that cost would land on the desktop application too.
+# Add it only when a feature actually needs it.

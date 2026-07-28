@@ -288,6 +288,51 @@ Other files MMODA looks for (at repo root):
 - `acknowledgements.md` — attribution / data provider credits
 - `test_*.ipynb` — test notebooks (excluded from becoming services)
 
+### One repository or two? — decided 2026-07-28: **one**
+
+The MMODA service and the desktop application stay in this single repository.
+
+The decisive point is that **MMODA discovers workflows from its own GitLab
+namespace, not from GitHub**. So a copy has to exist on their GitLab either way.
+That copy should be a *mirror* of this repository, not a fork: GitHub stays the
+source of truth, and the whole thing is pushed to the MMODA GitLab. The repo is
+896 KB of tracked files, so mirroring all of it costs nothing.
+
+Keeping one repository also means:
+
+- the notebook imports `src/` directly — splitting would force either duplicated
+  code or publishing `src` to PyPI just to satisfy an import;
+- one test suite covers both paths. Subtleties like "the IDL `Flux, Jy`
+  histogram actually plots `Tx1000_K`" (§5.7) live in shared code; in two
+  repositories that knowledge would silently diverge;
+- a fix to the loader or the coordinate transform reaches both at once.
+
+The cost is five MMODA-specific files at the repository root that mean nothing
+to a desktop user. `mmoda.yaml` keeps the notebook itself tidily in `mmoda/`.
+
+Revisit this if the workflow ever needs heavy dependencies the desktop app
+should not carry (`healpy`, `astroquery`), or if a different team takes over the
+MMODA side.
+
+### Merging the requirements is free — provided `oda-api` stays out
+
+Measured with `pip install --dry-run --report`:
+
+| Requirement set | Packages resolved |
+|---|---|
+| Desktop only (`numpy`, `pandas`, `matplotlib`, `pillow`, `astropy`) | 17 |
+| Same **+ `oda-api`** | 53 (**+36**) |
+
+The 36 include `scipy`, `bokeh`, `astroquery`, `pyvo`, `rdflib`, `keyring`,
+`tornado` and `jsonschema`. Since MMODA reads `requirements.txt` from the
+repository root, that cost would fall on desktop users too.
+
+Nothing we ship imports `oda_api` — it is only needed for `ProgressReporter`,
+token access or renku secrets. It is therefore **not** in
+`mmoda/requirements.txt`. The merged root file is the existing desktop list plus
+a single `-e .` line, which installs this project so the notebook can `import
+src` from any working directory. **Net new third-party packages: zero.**
+
 ---
 
 ## 7. What is here, and how to run it
