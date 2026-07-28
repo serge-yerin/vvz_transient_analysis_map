@@ -218,6 +218,32 @@ These are real issues, ordered by how much they matter:
     a **bare DOI**: `oda:reference "10.1051/0004-6361/202037850"`. Worth
     reporting upstream to oda-hub.
 
+12. **A bare astropy `Table` output silently yields *no products at all*.**
+    The worst bug found so far, and invisible to every earlier check. MMODA
+    gathers outputs by injecting a cell that calls `scrapbook.glue()` on each
+    declared output. `nb2workflow`'s `denumpyfy()` converts numpy scalars inside
+    lists and dicts but does **not** descend into an astropy `Table`, so gluing
+    one raises `Object of type int64 is not JSON serializable`. The fallback
+    `json.dumps(..., cls=CustomJSONEncoder)` fails the same way, the whole
+    gathering cell dies, and `extract_output()` returns `{}` — **zero** products,
+    not three out of four.
+
+    The notebook still runs perfectly under papermill, and `nb2workflow` still
+    reports four correctly typed output *declarations*. Only executing through
+    `NotebookAdapter.execute()` and inspecting `extract_output()` reveals it.
+
+    Fix: wrap the table — `transient_table = ODAAstropyTable(transients)`. This
+    is why `oda-api` is a hard requirement despite the notebook importing just
+    one name from it. Guarded by
+    `tests/test_notebook.py::TestOutputGathering`, verified to fail when the
+    wrapper is removed.
+
+13. **`nbadapter.run()` discards execution errors.** It ignores what
+    `execute()` returns, so a failed workflow comes back as an empty dict with
+    nothing raised. Tests that assert on failure must call `execute()` and
+    inspect the returned exceptions — which is also what MMODA itself does, so
+    the user *does* see our `NoTransientsFound` message.
+
 Non-problem: the catalog is ~25 KB / 380 rows, small enough to ship inside the
 repo. MMODA's guidance only warns against embedding *large* datasets.
 
@@ -314,7 +340,7 @@ Revisit this if the workflow ever needs heavy dependencies the desktop app
 should not carry (`healpy`, `astroquery`), or if a different team takes over the
 MMODA side.
 
-### Merging the requirements is free — provided `oda-api` stays out
+### Dependencies: `oda-api` is required, but only for the service
 
 Measured with `pip install --dry-run --report`:
 
@@ -324,36 +350,53 @@ Measured with `pip install --dry-run --report`:
 | Same **+ `oda-api`** | 53 (**+36**) |
 
 The 36 include `scipy`, `bokeh`, `astroquery`, `pyvo`, `rdflib`, `keyring`,
-`tornado` and `jsonschema`. Since MMODA reads `requirements.txt` from the
-repository root, that cost would fall on desktop users too.
+`tornado` and `jsonschema`.
 
-Nothing we ship imports `oda_api` — it is only needed for `ProgressReporter`,
-token access or renku secrets. It is therefore **not** in
-`mmoda/requirements.txt`. The merged root file is the existing desktop list plus
-a single `-e .` line, which installs this project so the notebook can `import
-src` from any working directory. **Net new third-party packages: zero.**
+An earlier version of this document claimed `oda-api` could be left out because
+nothing imported it. **That was wrong**, and §5.12 explains why: without
+`oda_api.data_products.ODAAstropyTable`, output gathering dies and the service
+returns nothing at all.
+
+The cost is contained by keeping it an **extra** rather than a base dependency:
+
+| Who | Command | Packages |
+|---|---|---|
+| Desktop viewer only | `pip install -e .` | 17 |
+| MMODA service / full dev | `pip install -r requirements.txt` | 53 |
+
+`pyproject.toml` declares `oda-api` under `[project.optional-dependencies] mmoda`,
+and the root `requirements.txt` — the file MMODA reads — pulls it in with
+`-e .[mmoda]`. A desktop user never pays for it.
 
 ---
 
 ## 7. What is here, and how to run it
 
+The support files now live at the repository root, which is where MMODA reads
+them from:
+
 ```
-mmoda/
-├── README.md                 this document
-├── utr2_transients.ipynb     the service notebook
-├── requirements.txt          service dependencies      -> root at submission
-├── environment.yml           conda environment         -> root at submission
-├── mmoda.yaml                notebook discovery config -> root at submission
-├── mmoda_help_page.md        help text for the service -> root at submission
-└── acknowledgements.md       credits                   -> root at submission
+<repo root>/
+├── requirements.txt            MMODA service dependencies (-e .[mmoda])
+├── environment.yml             conda environment
+├── mmoda.yaml                  points MMODA at mmoda/utr2_*.ipynb
+├── mmoda_help_page.md          help text shown on the service page
+├── acknowledgements.md         credits
+├── pyproject.toml              makes `src` installable
+└── mmoda/
+    ├── README.md               this document
+    ├── utr2_transients.ipynb   the service notebook
+    └── test_utr2_transients.ipynb   MMODA-form tests
 ```
 
 ### One-time setup
 
 ```bash
-pip install -e .            # makes `src` importable from anywhere
-pip install pytest papermill ipykernel nbformat
+pip install -r requirements.txt          # service + dev (53 packages)
+pip install -e .[test]                   # or just the test tooling
 ```
+
+For the desktop viewer alone, `pip install -e .` is enough and skips `oda-api`.
 
 The editable install is what lets the notebook run irrespective of the working
 directory. Papermill executes with the *caller's* working directory, not the
@@ -364,9 +407,14 @@ resort, but installing the package is the clean path.
 ### Run the tests
 
 ```bash
-pytest                      # 53 tests, ~23 s (includes 3 real notebook runs)
-pytest -m "not slow"        # skip the papermill executions
+pytest                      # 56 tests, ~50 s (includes 6 real notebook runs)
+pytest -m "not slow"        # skip the execution tests
 ```
+
+`TestOutputGathering` is the most important class in the suite: it runs the
+notebook through `NotebookAdapter.execute()` — MMODA's actual path — and checks
+that the declared outputs are really *gathered*, not merely declared. That is a
+separate failure domain from execution (§5.12), and papermill cannot see it.
 
 The suite includes `TestNb2WorkflowIntrospection`, which parses the notebook
 with **nb2workflow itself** — the same tool MMODA runs — and asserts that all 7
@@ -393,15 +441,18 @@ confirms they all resolve in the real ODA ontology.
 | nb2workflow discovers all 4 outputs with correct types | ✅ verified |
 | All annotated types resolve in the real ODA ontology | ✅ verified (no warnings) |
 | `oda:version` and `oda:reference` reach the notebook graph | ✅ verified |
-| Failure path gives a readable message | ✅ verified |
-| Support files at repository root | ❌ **still in `mmoda/`** — §5.8 |
+| Failure path gives a readable message | ✅ verified via `execute()` exceptions |
+| **All 4 outputs actually gathered by scrapbook** | ✅ verified — §5.12 |
+| Figures arrive as base64 file content | ✅ verified |
+| Support files at repository root | ✅ done 2026-07-28 |
+| `test_*.ipynb` for MMODA's automated monitoring | ✅ `mmoda/test_utr2_transients.ipynb`, passing |
 | Real publication DOI in `oda:reference` | ❌ placeholder points at the repo |
-| `test_*.ipynb` for MMODA's automated monitoring | ❌ not written |
 | Container build (`nb2worker`) tried | ❌ not attempted (needs Docker) |
 | Hosting namespace confirmed | ❌ **blocked** — §6 |
 
-The first six are what makes the notebook a *valid* MMODA service, and they
-pass. The remaining five are packaging and process, not code.
+Everything that can be checked without Docker and without a namespace now
+passes. The three remaining items are one piece of missing information (the
+DOI), one untested environment (the container), and the hosting blocker.
 
 ### Run the notebook by hand
 
@@ -464,10 +515,10 @@ directory. Both filenames are git-ignored.
 - [x] `mmoda.yaml` (template in `mmoda/`, to be moved to root)
 - [x] Verify end to end with papermill, including parameter injection
 - [x] Install `nb2workflow` and validate the annotations it actually parses
+- [x] `mmoda/test_utr2_transients.ipynb` in MMODA's own test-notebook form
+- [x] Move the support files to the repository root (§5.8)
+- [x] Verify outputs are really gathered, not just declared (§5.12)
 - [ ] Fill in the real `oda:reference` DOI — **bare DOI, not a URL** (§5.11)
-- [ ] `test_utr2_transients.ipynb` using `nb2workflow.nbadapter.run` — MMODA wants a
-      notebook-form test for its automated monitoring, alongside our pytest suite
-- [ ] Move the support files to the repository root (§5.8)
 - [ ] Report the `oda:reference` URL bug (§5.11) upstream to oda-hub
 - [ ] Local run via `nb2service`, then `nb2worker` container build
 - [ ] Deploy, verify in the MMODA frontend, supply test parameters to the team
@@ -484,6 +535,29 @@ directory. Both filenames are git-ignored.
 
 Newest first. One entry per session — what was done, what was decided, what is
 next.
+
+### 2026-07-28 — Root layout, test notebook, and the worst bug yet
+
+- **Decided:** one repository, mirrored to MMODA's GitLab rather than forked
+  (§6). Recorded the reasoning.
+- Moved `requirements.txt`, `environment.yml`, `mmoda.yaml`,
+  `mmoda_help_page.md` and `acknowledgements.md` to the repository root, where
+  MMODA reads them.
+- **Found the worst bug so far (§5.12).** Running the notebook through
+  `NotebookAdapter.execute()` rather than papermill showed that a bare astropy
+  `Table` output cannot be glued by scrapbook, which kills the whole output
+  gathering cell and returns **zero** products — not three of four. The notebook
+  ran perfectly and declared four correct outputs throughout. Fixed by wrapping
+  in `oda_api.data_products.ODAAstropyTable`.
+- **Correction:** the 2026-07-28 note that `oda-api` could be dropped was wrong;
+  it is a hard requirement. Kept it off the desktop path by declaring it as the
+  `mmoda` extra, so `pip install -e .` is still 17 packages while
+  `pip install -r requirements.txt` is 53.
+- Also found that `nbadapter.run()` swallows execution errors (§5.13).
+- Wrote `mmoda/test_utr2_transients.ipynb` in MMODA's own form; it passes.
+- Suite is now 56 tests. Verified the new `TestOutputGathering` guard fails when
+  the `ODAAstropyTable` wrapper is removed.
+- **Next:** the real DOI, then contact the Kyiv node.
 
 ### 2026-07-26 (later) — Validated against nb2workflow, two silent bugs fixed
 

@@ -90,9 +90,14 @@ the interpreter inside `.venv`.
 With the environment active:
 ```bash
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .
 ```
 This installs `numpy`, `pandas`, `matplotlib`, `pillow` and `astropy`.
+
+> Use `pip install -e .`, **not** `pip install -r requirements.txt`. The
+> requirements file is the one MMODA reads to build the online service (see
+> [MMODA integration](#mmoda-integration) below) and additionally pulls in
+> `oda-api` and about 36 further packages that the desktop viewer never uses.
 
 ### 6. Run the program
 
@@ -230,6 +235,42 @@ backends later (for example a real FITS image with WCS or a higher-resolution
 all-sky survey). To add a new map type, write a class that derives from
 `BackgroundMap`, implement the `extent` and `image` properties, and pass an
 instance of it to `TransientMapApp`.
+
+---
+
+## MMODA integration
+
+Alongside the desktop viewer, this repository contains a **web service version**
+of the same analysis for
+[MMODA](https://www.astro.unige.ch/mmoda/) (Multi-Messenger Online Data
+Analysis), targeting the BITP / Kyiv node.
+
+```
+mmoda/
+├── README.md                     plan, findings and work log
+├── utr2_transients.ipynb         the service notebook
+└── test_utr2_transients.ipynb    tests in MMODA's own form
+```
+
+Instead of clicking a transient on a map, a user fills in a form (source name or
+RA/Dec, search radius, SNR and DM limits) and receives a catalogue table, a sky
+map and the distribution histograms. It shares the loader, coordinate transforms
+and plotting code in `src/` with the desktop program, so a fix reaches both.
+
+The root-level `requirements.txt`, `environment.yml`, `mmoda.yaml`,
+`mmoda_help_page.md` and `acknowledgements.md` exist for MMODA's build process
+and are not needed to run the desktop viewer.
+
+**`mmoda/README.md` is the place to start** — it holds the plan, the open
+questions and a dated work log.
+
+### Tests
+
+```bash
+pip install -e .[test]
+pytest                 # 56 tests
+pytest -m "not slow"    # skip the notebook executions
+```
 
 ---
 

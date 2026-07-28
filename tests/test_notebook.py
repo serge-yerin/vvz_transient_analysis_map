@@ -9,6 +9,7 @@ slower and is skipped when papermill is not installed.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -224,6 +225,73 @@ class TestNb2WorkflowIntrospection:
                 f"{leaked} leaked to the notebook level; a parameter annotation "
                 "is wrapped onto a second line"
             )
+
+
+@pytest.mark.slow
+class TestOutputGathering:
+    """Execute through nb2workflow's adapter, which is what MMODA actually runs.
+
+    This is the only layer that exercises scrapbook output gathering, and that
+    is a separate failure domain: the notebook can execute flawlessly and still
+    deliver nothing, because outputs are collected afterwards by an injected
+    cell. Running it under papermill cannot detect that.
+    """
+
+    @staticmethod
+    def adapter(monkeypatch):
+        pytest.importorskip("nb2workflow")
+        pytest.importorskip("oda_api")
+        import nb2workflow.nbadapter as nbadapter
+
+        # nb2workflow's health probe calls os.statvfs, which does not exist on
+        # Windows. It is used only for logging, so stub it out.
+        if not hasattr(os, "statvfs"):
+            monkeypatch.setattr(nbadapter, "current_health", lambda: {})
+        return nbadapter
+
+    def test_all_declared_outputs_actually_reach_mmoda(self, monkeypatch):
+        nbadapter = self.adapter(monkeypatch)
+        nba = nbadapter.NotebookAdapter(str(NOTEBOOK))
+        exceptions = nba.execute(
+            {"RA": 350.85, "DEC": 58.815, "radius": 20.0},
+            log_output=False,
+            progress_bar=False,
+        )
+        assert exceptions == [], f"execution failed: {exceptions}"
+
+        gathered = nba.extract_output()
+        missing = set(EXPECTED_OUTPUTS) - set(gathered)
+        assert not missing, (
+            f"declared but never gathered: {missing}. A bare astropy Table does "
+            "this - wrap it in oda_api.data_products.ODAAstropyTable."
+        )
+
+    def test_figures_arrive_as_file_content(self, monkeypatch):
+        """The PNGs must be gathered as base64 payloads, not bare filenames."""
+        nbadapter = self.adapter(monkeypatch)
+        nba = nbadapter.NotebookAdapter(str(NOTEBOOK))
+        nba.execute({"radius": 180.0}, log_output=False, progress_bar=False)
+        gathered = nba.extract_output()
+        for name in ("sky_map", "histograms"):
+            content = gathered.get(f"{name}_content")
+            assert content, f"{name} was gathered without its file content"
+            assert len(content) > 1000
+
+    def test_failure_message_reaches_the_dispatcher(self, monkeypatch):
+        """MMODA reads execute()'s exceptions - that is how users see the reason.
+
+        Note run() cannot be used for this: it discards what execute() returns,
+        so a failed workflow comes back as an empty dict with nothing raised.
+        """
+        nbadapter = self.adapter(monkeypatch)
+        nba = nbadapter.NotebookAdapter(str(NOTEBOOK))
+        exceptions = nba.execute(
+            {"radius": 180.0, "snr_threshold": 10_000.0},
+            log_output=False,
+            progress_bar=False,
+        )
+        assert exceptions, "an impossible query unexpectedly succeeded"
+        assert "No transients" in str(exceptions)
 
 
 @pytest.mark.slow

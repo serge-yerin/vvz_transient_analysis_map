@@ -1,5 +1,34 @@
+# Dependencies for the MMODA service container.
+#
+# MMODA reads this file from the repository ROOT when it builds the service, so
+# it must cover everything the notebook in mmoda/ needs.
+#
+# ---------------------------------------------------------------------------
+# Only want the desktop viewer? Use this instead - it skips oda-api and its
+# ~36 transitive packages:
+#
+#     pip install -e .
+# ---------------------------------------------------------------------------
+
+# Installs this project plus the `mmoda` extra (oda-api).
+#
+# The editable install matters: papermill executes a notebook with the caller's
+# working directory rather than the notebook's, so the service relies on `src`
+# being importable from anywhere. Run pip from the repository root.
+-e .[mmoda]
+
+# Listed explicitly as well, because MMODA's tooling reads this file to
+# understand the environment. They are already implied by `-e .` above.
 numpy>=1.26
 pandas>=2.1
 matplotlib>=3.8
 pillow>=10.0
 astropy>=6.0
+
+# oda-api is REQUIRED, not optional, despite the notebook only importing one
+# name from it. nb2workflow gathers outputs with scrapbook, and its denumpyfy()
+# does not descend into an astropy Table, so gluing a bare Table dies on the
+# int64 column and NO products at all reach the user. Wrapping the table in
+# oda_api.data_products.ODAAstropyTable encodes cleanly.
+# See mmoda/README.md section 5.12.
+oda-api>=1.2.0
