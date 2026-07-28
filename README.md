@@ -2,8 +2,11 @@
 
 A small, cross-platform project for exploring the radio-astronomy transients
 detected by the **UTR-2 Pulsar/Transient Survey of the Northern Sky (UTPSNS)**
-at a central frequency near 20 MHz. It is a re-implementation in Python of the
+at a central frequency near 20 MHz. The work was done at Institute of Radio Astronomy of National Academy of Sciences of Ukraine (IRA NASU) with UTR-2 radio telescope under supervision of Dr. Vyacheslav Zakharenko and his team. It is a re-implementation in Python of the
 original IDL program `transientanalisys_380_flux_v2.pro`.
+
+Link to paper: https://doi.org/10.1051/0004-6361/202555029
+
 
 It ships in **two forms that share the same analysis code** in `src/`:
 
