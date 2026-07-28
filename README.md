@@ -695,7 +695,7 @@ and hand these test parameters to the node's team.
 
 ### Before you submit — checklist
 
-- [ ] Real UTPSNS publication **DOI** in `oda:reference` — **bare DOI, not a URL**
+- [x] Real UTPSNS publication **DOI** in `oda:reference` — `10.1051/0004-6361/202555029`
 - [ ] `acknowledgements.md` completed (survey authors, citation, licence, image provenance)
 - [ ] Local Docker test green (the section above)
 - [ ] `pytest` green
@@ -728,8 +728,9 @@ and 13 are already handled in code; the rest need input or a future change.
    works around this with `encoding="latin-1"` and skipping the header), and at
    least one value has stray internal whitespace (`"24 .26"`). Clean this before
    anything is published anywhere.
-6. **Provenance and credit.** Needs an `oda:reference` DOI for the UTPSNS
-   publication, plus `acknowledgements.md` crediting the data providers.
+6. **Provenance and credit.** The `oda:reference` DOI is set
+   (`10.1051/0004-6361/202555029`); `acknowledgements.md` still needs the full
+   author list / citation text and the catalogue and background-image licences.
 7. **Column semantics.** The IDL histogram labelled "Flux, Jy" actually plots
    `Tx1000_K` (brightness temperature), not `S_o`. The Python code deliberately
    uses `S_o`. Any published table must document what each column really is
@@ -823,11 +824,11 @@ stays as it is.
 | Support files at repository root | ✅ done 2026-07-28 |
 | `test_*.ipynb` for MMODA's automated monitoring | ✅ `mmoda/test_utr2_transients.ipynb`, passing |
 | **Container build + service run in Docker** | ✅ **verified 2026-07-28** — built with `nb2workflow`'s own Dockerfile, served on :8000, whole-sky + cone + failure paths all correct |
-| Real publication DOI in `oda:reference` | ❌ placeholder points at the repo |
+| Real publication DOI in `oda:reference` | ✅ set to `10.1051/0004-6361/202555029` |
 | Hosting namespace confirmed | ❌ **blocked** — see [Deploying to a real MMODA server](#deploying-to-a-real-mmoda-server) |
 
-Everything checkable without a namespace now passes. The two remaining items are
-one piece of missing information (the DOI) and the hosting blocker.
+Everything checkable without a namespace now passes. The only remaining item is
+the hosting blocker.
 
 ## Dependencies
 
@@ -874,7 +875,7 @@ side.
 - [ ] Clean the CSV: ASCII header, fix stray whitespace, document every column
 - [ ] Write a column-by-column data dictionary with units
 - [ ] Prepare and submit the VizieR/CDS package
-- [ ] Obtain / confirm the UTPSNS publication DOI
+- [x] Obtain / confirm the UTPSNS publication DOI (`10.1051/0004-6361/202555029`)
 
 ### Track B — MMODA service
 
@@ -894,7 +895,7 @@ side.
 - [x] Move the support files to the repository root
 - [x] Verify outputs are really gathered, not just declared
 - [x] Local container build + `nb2service` run, verified with Docker
-- [ ] Fill in the real `oda:reference` DOI — **bare DOI, not a URL**
+- [x] Fill in the real `oda:reference` DOI (`10.1051/0004-6361/202555029`, bare DOI)
 - [ ] Report the `oda:reference` URL bug upstream to oda-hub
 - [ ] Deploy, verify in the MMODA frontend, supply test parameters to the team
 
@@ -907,6 +908,14 @@ side.
 ## Work log
 
 Newest first. One entry per session — what was done, decided, and what is next.
+
+### 2026-07-28 (later still) — Real reference DOI wired in
+
+- Set `oda:reference` to the bare DOI `10.1051/0004-6361/202555029` (the UTPSNS
+  A&A publication) in `mmoda/utr2_transients.ipynb`, replacing the repository
+  placeholder, and recorded it in `acknowledgements.md`. Verified it survives
+  `nb2workflow` parsing (reaches the notebook graph; not treated as a URL).
+- **Next:** contact the Kyiv node.
 
 ### 2026-07-28 (later) — Container build verified with Docker
 
