@@ -1,7 +1,7 @@
 # Conda environment for the MMODA service container.
 #
 # MMODA reads this from the repository root. The notebook itself lives in
-# mmoda/; see mmoda/README.md for the full integration notes.
+# mmoda/; see README.md (Part II) for the full integration notes.
 name: utr2-transients
 channels:
   - conda-forge

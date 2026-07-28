@@ -30,5 +30,5 @@ astropy>=6.0
 # does not descend into an astropy Table, so gluing a bare Table dies on the
 # int64 column and NO products at all reach the user. Wrapping the table in
 # oda_api.data_products.ODAAstropyTable encodes cleanly.
-# See mmoda/README.md section 5.12.
+# See README.md, "Open problems and caveats" (item 12).
 oda-api>=1.2.0
